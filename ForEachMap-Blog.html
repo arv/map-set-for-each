@@ -1,0 +1,5 @@
+A few days ago I told you about Chrome getting Harmony Map constructor available behind a flag. The current implementation does not provide a way to iterate over the keys or values because that depends on Harmony iterators which are not yet implemented in V8.
+
+However, we can create our own class that adds support for iteration. This requires extra memory overhead so it might not be worth it for you.
+
+The implementation creates a new "class" since V8 does not correctly allow sub classing of Map. The name of this "class" is ForEachMap since it provides one additional method over the standard Map, a forEach method. The forEach method calls a function for every key-value pair in the map. The implementation uses a WeakMap as a side table for the private state of the map. The private state contains arrays with keys and values and a real Map that maps the key to the given index. It also has keeps track of number of holes in these arrays so that we can reindex the arrays when there are too many holes.
