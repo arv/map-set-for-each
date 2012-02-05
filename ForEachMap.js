@@ -104,12 +104,15 @@ var ForEachMap = (function() {
       var p = getPrivate(this);
       // Lock the state so that we don't reindex during an iteration.
       p.locked++;
-      for (var i = 0; i < p.values.length; i++) {
-        var value = p.values[i];
-        if (value !== hole)
-          f.call(opt_this || map, value, p.keys[i], map);
+      try {
+        for (var i = 0; i < p.values.length; i++) {
+          var value = p.values[i];
+          if (value !== hole)
+            f.call(opt_this || map, value, p.keys[i], map);
+        }
+      } finally {
+        p.locked--;
       }
-      p.locked--;
     }
   };
 
