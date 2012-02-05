@@ -34,7 +34,7 @@ var ForEachMap = (function() {
       var keys = [];
       var values = [];
       var i = 0;
-      map.forEach(function(k, v) {
+      map.forEach(function(v, k) {
         keys[i] = k;
         values[i] = v;
         p.map.set(k, i);
@@ -69,7 +69,7 @@ var ForEachMap = (function() {
         var i = p.values.length;
         p.keys[i] = key;
         p.values[i] = value;
-        p.map.set(key, i);      
+        p.map.set(key, i);
       }
     },
 
@@ -107,7 +107,7 @@ var ForEachMap = (function() {
       for (var i = 0; i < p.values.length; i++) {
         var value = p.values[i];
         if (value !== hole)
-          f.call(opt_this || map, p.keys[i], value, map);
+          f.call(opt_this || map, value, p.keys[i], map);
       }
       p.locked--;
     }

@@ -37,7 +37,7 @@ m.set('a', 'AA');
 
 function keys(map) {
   var rv = [];
-  map.forEach(function(k) {
+  map.forEach(function(_, k) {
     rv.push(k);
   });
   return rv;
@@ -45,13 +45,13 @@ function keys(map) {
 
 function values(map) {
   var rv = [];
-  map.forEach(function(_, v) {
+  map.forEach(function(v) {
     rv.push(v);
   });
   return rv;
 }
 
-m.forEach(function(k, v) {
+m.forEach(function(v, k) {
   assertEquals(true, m.has(k));
   assertEquals(v, m.get(k));
   assertEquals(m, this);
@@ -79,7 +79,7 @@ assertEquals('ac0100200300400', keys(m).join(''));
 assertEquals('AAC0100200300400', values(m).join(''));
 
 var obj = {};
-m.forEach(function(k, v, self) {
+m.forEach(function(v, k, self) {
   assertEquals(m, self);
   assertEquals(this, obj);
 }, obj);
