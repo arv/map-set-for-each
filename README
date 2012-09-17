@@ -1,9 +1,23 @@
-This "class" wraps an ES Harmony Map "class" to allow iteration over the
-key-value pairs using a forEach.
+This polyfills Map.prototype.forEach and Set.prototype.forEach.
 
-var map = new ForEachMap;
+The ordering of the iteration is done by storing a parallel object that maps the
+keys to an string key which is used on a plain JavaScript object which we do the
+iteration over.
+
+var map = new Map;
 map.set('a', 'A');
-map.set('b', 'B');
-map.forEach(function(key, value) {
-  console.log(key, value);
+map.set(document.body, 'B');
+map.forEach(function(value, key) {
+  console.log(value, key);
+});
+
+In the case of Set the callback passes the value twice so that the callback
+function has the same signature as the callback used in Array.prototype.forEach.
+
+var set = new Set;
+set.add('a');
+set.add(document.body);
+set.forEach(function(value, valueAgain) {
+  assert(value === valueAgain);
+  console.log(value);
 });
