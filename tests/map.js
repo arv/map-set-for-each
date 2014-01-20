@@ -146,4 +146,24 @@ suite('Map', function() {
     assert.deepEqual([o, p, f, g], keys(m));
   });
 
+  test('issue 2', function() {
+    var s = [];
+    var value = 42;
+    var map = new Map();
+    map.set(0, value);
+    map.set(1, value);
+    map.set(2, value);
+    map.set(3, value);
+    map.delete(1, value);
+    map.forEach(function(value, key) {
+      s.push(key);
+      if (key === 0) {
+        map.delete(0);
+        map.delete(2);
+        map.set(4);
+      }
+    });
+    assert.equal(s.join(''), '034');
+  });
+
 });

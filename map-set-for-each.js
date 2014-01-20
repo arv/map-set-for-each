@@ -24,85 +24,147 @@
   if (Map.prototype.forEach && Set.prototype.forEach)
     return;
 
-  // We use an object to keep the ordering
+  // Each Map and Set is backed by a MapData object. This MapData object
+  // consists of an array (for iteration order) and a Map (for constant time
+  // lookup). Both the map and array conatins Nodes. These Nodes contains the
+  // index where they are stored in the array.
+  //
+  // When deleting a key the entry in the array is set to null and th Node in
+  // the internal Map is deleted. After a key has been deleted we check if we
+  // should clean up our internal array to remove the null nodes.
+  //
+  // When we iterate we increment a counter. This is because we cannot clean up
+  // the backing array during interation or the iteration order would be
+  // incorrect.
 
-  var keyMap = new WeakMap;
-
-  function getKeyMap(obj) {
-    var map = keyMap.get(obj);
-    if (!map) {
-      map = Object.create(null);
-      keyMap.set(obj, map);
-    }
-    return map;
-  }
-
-  // These maps are used to map a value to a unique ID.
-  var objectKeys = new WeakMap;
-  var numberKeys = Object.create(null);
-  var stringKeys = Object.create(null);
-
-  var uidCounter = 4;  // 0 - 3 are used for null, undefined, false and true
-
-  /**
-   * @param {*} key
-   * @return {string} A unique ID for a given key (of any type). This unique ID
-   *    is a non numeric string since strings that can be used as array indexes
-   *    causes different enumeration order.
-   */
-  function getUid(key) {
-    if (key === null)
-      return '$0';
-
-    var keys, uid;
-
-    switch (typeof key) {
-      case 'undefined':
-        return '$1';
-      case 'boolean':
-        // 2 & 3
-        return '$' + (key + 2);
-      case 'object':
-      case 'function':
-        uid = objectKeys.get(key);
-        if (!uid) {
-          uid = '$' + uidCounter++;
-          objectKeys.set(key, uid);
-        }
-        return uid;
-      case 'number':
-        keys = numberKeys;
-        break;
-      case 'string':
-        keys = stringKeys;
-        break;
-    }
-    uid = keys[key];
-    if (!uid) {
-      uid = '$' + uidCounter++;
-      keys[key] = uid;
-    }
-    return uid;
-  }
-
+  var MapGet = Map.prototype.get;
   var MapSet = Map.prototype.set;
   var MapDelete = Map.prototype.delete;
-  var SetAdd = Set.prototype.add;
-  var SetDelete = Set.prototype.delete;
+  var MapClear = Map.prototype.clear;
+
+  function Node(key, value, index) {
+    this.key = key;
+    this.value = value;
+    this.index = index;
+  }
+
+  function MapData() {
+    this.iteratorCount = 0;
+    this.map = new Map;
+    this.array = [];
+    this.size = 0;
+  }
+
+  MapData.prototype = {
+    getNode: function(key) {
+      return MapGet.call(this.map, key);
+    },
+    has: function(key) {
+      var node = this.getNode(key);
+      return !!node;
+    },
+    get: function(key) {
+      var node = this.getNode(key);
+      return node && node.value;
+    },
+    set: function(key, value) {
+      var node = this.getNode(key);
+      if (node) {
+        node.value = value;
+      } else {
+        var index = this.array.length;
+        node = new Node(key, value, index);
+        this.array[index] = node;
+        MapSet.call(this.map, key, node);
+        this.size++;
+      }
+    },
+    delete: function(key) {
+      var node = this.getNode(key);
+      if (!node)
+        return false;
+      this.array[node.index] = null;
+      MapDelete.call(this.map, key);
+      this.size--;
+      this.maybeCleanup();
+      return true;
+    },
+    clear: function() {
+      if (this.iteratorCount === 0) {
+        this.array = [];
+      } else {
+        for (var i = 0; i < this.array.length; i++) {
+          this.array[i] = null;
+        }
+      }
+      MapClear.call(this.map);
+      this.size = 0;
+    },
+    maybeCleanup: function() {
+      if (this.iteratorCount === 0 &&  this.array.length > 1.5 * this.size)
+        this.cleanup();
+    },
+    cleanup: function() {
+      var newArray = [], j = 0;
+      for (var i = 0; i < this.array.length; i++) {
+        var node = this.array[i];
+        if (node) {
+          node.index = j;
+          newArray[j++] = node;
+        }
+      }
+      this.array = newArray;
+    },
+    forEach: function(f, self, context) {
+      this.iteratorCount++;
+      try {
+        for (var i = 0; i < this.array.length; i++) {
+          var node = this.array[i];
+          if (node)
+            f.call(context || self, node.value, node.key, self);
+        }
+      } finally {
+        this.iteratorCount--;
+        this.maybeCleanup();
+      }
+    }
+  };
+
+  var mapDataMap = new WeakMap;
+
+  function getMapData(object) {
+    var mapData = mapDataMap.get(object);
+    if (!mapData)
+      mapDataMap.set(object, mapData = new MapData);
+    return mapData;
+  }
+
+  Map.prototype.has = function(key) {
+    return getMapData(this).has(key);
+  };
+
+  Map.prototype.get = function(key) {
+    return getMapData(this).get(key);
+  };
 
   Map.prototype.set = function(key, value) {
-    var uid = getUid(key);
-    var keyMap = getKeyMap(this);
-    keyMap[uid] = key;
-    return MapSet.call(this, key, value);
+    getMapData(this).set(key, value);
+    return this;
   };
 
   Map.prototype.delete = function(key) {
-    var uid = getUid(key);
-    var keyMap = getKeyMap(this);
-    delete keyMap[uid];
-    return MapDelete.call(this, key);
+    return getMapData(this).delete(key);
   };
+
+  Map.prototype.clear = function(f) {
+    getMapData(this).clear();
+  };
+
+  Object.defineProperty(Set.prototype, 'size', {
+    get: function() {
+      return getMapData(this).size;
+    }
+  });
 
   /**
    * For each key and value in the map call a function that takes the key and
@@ -112,27 +174,32 @@
    *     Defaults to the map itself.
    */
   Map.prototype.forEach = function(f, opt_this) {
-    var keyMap = getKeyMap(this);
-    for (var uid in keyMap) {
-      var key = keyMap[uid]
-      var value = this.get(key);
-      f.call(opt_this || this, value, key, this);
-    }
+    getMapData(this).forEach(f, this, opt_this);
+  };
+
+
+  Set.prototype.has = function(key) {
+    return getMapData(this).has(key);
   };
 
   Set.prototype.add = function(key) {
-    var uid = getUid(key);
-    var keyMap = getKeyMap(this);
-    keyMap[uid] = key;
-    return SetAdd.call(this, key);
+    getMapData(this).set(key, key);
+    return this;
   };
 
   Set.prototype.delete = function(key) {
-    var uid = getUid(key);
-    var keyMap = getKeyMap(this);
-    delete keyMap[uid];
-    return SetDelete.call(this, key);
+    return getMapData(this).delete(key);
   };
+
+  Set.prototype.clear = function() {
+    getMapData(this).clear();
+  };
+
+  Object.defineProperty(Set.prototype, 'size', {
+    get: function() {
+      return getMapData(this).size;
+    }
+  });
 
   /**
    * For each value in the set call a function that takes the value and
@@ -142,11 +209,7 @@
    *     Defaults to the set itself.
    */
   Set.prototype.forEach = function(f, opt_this) {
-    var keyMap = getKeyMap(this);
-    for (var uid in keyMap) {
-      var key = keyMap[uid]
-      f.call(opt_this || this, key, key, this);
-    }
+    getMapData(this).forEach(f, this, opt_this);
   };
 
 })();
